@@ -1,0 +1,47 @@
+From 9628a181a5d2b72cb8232e835bed706070f46b48 Mon Sep 17 00:00:00 2001
+From: Jeff Layton <jlayton@redhat.com>
+Date: Thu, 3 Jun 2010 10:33:26 -0400
+Subject: [PATCH] rpcbind: set SO_REUSEADDR on NC_TPI_COTS listening sockets
+
+If not, then if there are any sockets in ESTABLISHED state when rpcbind
+is restarted then that will prevent the bind() call from succeeding.
+
+Details of the problem are here:
+
+    https://bugzilla.redhat.com/show_bug.cgi?id=597356
+
+Signed-off-by: Jeff Layton <jlayton@redhat.com>
+---
+ src/rpcbind.c |    9 +++++++++
+ 1 files changed, 9 insertions(+), 0 deletions(-)
+
+diff --git a/src/rpcbind.c b/src/rpcbind.c
+index ddf2cfc..c8f0d9f 100644
+--- a/src/rpcbind.c
++++ b/src/rpcbind.c
+@@ -276,6 +276,7 @@ init_transport(struct netconfig *nconf)
+ 	int addrlen = 0;
+ 	int nhostsbak;
+ 	int checkbind;
++	int on = 1;
+ 	struct sockaddr *sa = NULL;
+ 	u_int32_t host_addr[4];  /* IPv4 or IPv6 */
+ 	struct sockaddr_un sun;
+@@ -493,6 +494,14 @@ init_transport(struct netconfig *nconf)
+ 		}
+ 		oldmask = umask(S_IXUSR|S_IXGRP|S_IXOTH);
+ 		__rpc_fd2sockinfo(fd, &si);
++		if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on,
++				sizeof(on)) != 0) {
++			syslog(LOG_ERR, "cannot set SO_REUSEADDR on %s",
++				nconf->nc_netid);
++			if (res != NULL)
++				freeaddrinfo(res);
++			return 1;
++		}
+ 		if (bind(fd, sa, addrlen) < 0) {
+ 			syslog(LOG_ERR, "cannot bind %s: %m", nconf->nc_netid);
+ 			if (res != NULL)
+-- 
+1.6.6.1
+
